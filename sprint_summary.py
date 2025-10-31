@@ -124,10 +124,16 @@ class SprintSummary:
 
             prs = []
             for item in data.get('items', []):
+                # Extract owner and repo from repository_url
+                repo_parts = item['repository_url'].split('/')
+                owner = repo_parts[-2] if len(repo_parts) >= 2 else ''
+                repo = repo_parts[-1]
+
                 prs.append({
                     'number': item['number'],
                     'title': item['title'],
-                    'repo': item['repository_url'].split('/')[-1],
+                    'owner': owner,
+                    'repo': repo,
                     'state': item['state'],
                     'url': item['html_url'],
                     'updated': item['updated_at']
@@ -138,6 +144,63 @@ class SprintSummary:
         except requests.exceptions.RequestException as e:
             print(f"❌ Error fetching GitHub PR reviews: {e}")
             return []
+
+    def count_user_pr_comments(self, prs: List[Dict]) -> int:
+        """Count comments made by the user on the given PRs within the date range."""
+        total_comments = 0
+
+        headers = {
+            'Authorization': f'token {self.github_token}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+
+        for pr in prs:
+            try:
+                # 1. Fetch PR review comments (comments on code lines)
+                url = f"https://api.github.com/repos/{pr['owner']}/{pr['repo']}/pulls/{pr['number']}/comments"
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                review_comments = response.json()
+
+                for comment in review_comments:
+                    username = comment.get('user', {}).get('login')
+                    if username and username.lower() == self.github_username.lower():
+                        comment_date = datetime.strptime(comment['created_at'][:10], '%Y-%m-%d')
+                        if self.start_date <= comment_date <= self.end_date:
+                            total_comments += 1
+
+                # 2. Fetch issue comments (general PR conversation)
+                url = f"https://api.github.com/repos/{pr['owner']}/{pr['repo']}/issues/{pr['number']}/comments"
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                issue_comments = response.json()
+
+                for comment in issue_comments:
+                    username = comment.get('user', {}).get('login')
+                    if username and username.lower() == self.github_username.lower():
+                        comment_date = datetime.strptime(comment['created_at'][:10], '%Y-%m-%d')
+                        if self.start_date <= comment_date <= self.end_date:
+                            total_comments += 1
+
+                # 3. Fetch review summaries (approve/request changes with comments)
+                url = f"https://api.github.com/repos/{pr['owner']}/{pr['repo']}/pulls/{pr['number']}/reviews"
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                reviews = response.json()
+
+                for review in reviews:
+                    username = review.get('user', {}).get('login')
+                    if username and username.lower() == self.github_username.lower():
+                        if review.get('body'):
+                            review_date = datetime.strptime(review['submitted_at'][:10], '%Y-%m-%d')
+                            if self.start_date <= review_date <= self.end_date:
+                                total_comments += 1
+
+            except requests.exceptions.RequestException:
+                # Silently continue if we can't fetch comments for a PR
+                continue
+
+        return total_comments
 
     def print_summary(self):
         """Generate and print the sprint summary."""
@@ -180,6 +243,10 @@ class SprintSummary:
                 print(f"   {pr['url']}")
                 print()
             print(f"Total: {len(prs)} PR(s) reviewed")
+
+            # Count and display total comments
+            comment_count = self.count_user_pr_comments(prs)
+            print(f"Total comments made: {comment_count}")
         else:
             print("No PR reviews found in date range.")
 
@@ -209,6 +276,11 @@ class SprintSummary:
         if prs:
             for pr in prs:
                 print(f"{pr['repo']} #{pr['number']}: {pr['title']} - {pr['url']}")
+
+            # Count and display total comments
+            comment_count = self.count_user_pr_comments(prs)
+            print(f"\nTotal PR reviews: {len(prs)}")
+            print(f"Total comments made: {comment_count}")
         else:
             print("None")
 
