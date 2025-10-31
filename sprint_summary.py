@@ -185,6 +185,8 @@ class SprintSummary:
 
         print()
         print("=" * 60)
+        print()
+        print("Generated with: https://github.com/EvanSays/sprint_summary_cli")
 
     def print_concise_summary(self):
         """Generate and print a concise summary for Lattice."""
@@ -209,6 +211,9 @@ class SprintSummary:
                 print(f"{pr['repo']} #{pr['number']}: {pr['title']} - {pr['url']}")
         else:
             print("None")
+
+        print()
+        print("Generated with: https://github.com/EvanSays/sprint_summary_cli")
 
 
 def get_start_date() -> datetime:
