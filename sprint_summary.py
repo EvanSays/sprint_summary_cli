@@ -61,10 +61,12 @@ class SprintSummary:
         """Fetch JIRA tickets completed in the date range."""
         # Format dates for JQL
         start_str = self.start_date.strftime('%Y-%m-%d')
-        end_str = self.end_date.strftime('%Y-%m-%d')
+        # Add 1 day to end_date to make it inclusive
+        end_date_inclusive = self.end_date + timedelta(days=1)
+        end_str = end_date_inclusive.strftime('%Y-%m-%d')
 
         # JQL query to find tickets completed by the user in date range
-        jql = f'assignee = currentUser() AND status = Done AND updated >= "{start_str}" AND updated <= "{end_str}"'
+        jql = f'assignee = currentUser() AND status = Done AND updated >= "{start_str}" AND updated < "{end_str}"'
 
         url = f'{self.jira_url}/rest/api/3/search/jql'
         auth = HTTPBasicAuth(self.jira_email, self.jira_token)
@@ -99,9 +101,11 @@ class SprintSummary:
         """Fetch GitHub PR reviews by the user in the date range."""
         # Search for PRs reviewed by the user
         start_str = self.start_date.strftime('%Y-%m-%d')
-        end_str = self.end_date.strftime('%Y-%m-%d')
+        # Add 1 day to end_date to make it inclusive
+        end_date_inclusive = self.end_date + timedelta(days=1)
+        end_str = end_date_inclusive.strftime('%Y-%m-%d')
 
-        # GitHub Search API query
+        # GitHub Search API query (use < instead of .. to make end date inclusive)
         query = f'is:pr reviewed-by:{self.github_username} updated:{start_str}..{end_str}'
 
         url = 'https://api.github.com/search/issues'
@@ -148,6 +152,8 @@ class SprintSummary:
     def count_user_pr_comments(self, prs: List[Dict]) -> int:
         """Count comments made by the user on the given PRs within the date range."""
         total_comments = 0
+        # Make end_date inclusive by adding 1 day
+        end_date_inclusive = self.end_date + timedelta(days=1)
 
         headers = {
             'Authorization': f'token {self.github_token}',
@@ -166,7 +172,7 @@ class SprintSummary:
                     username = comment.get('user', {}).get('login')
                     if username and username.lower() == self.github_username.lower():
                         comment_date = datetime.strptime(comment['created_at'][:10], '%Y-%m-%d')
-                        if self.start_date <= comment_date <= self.end_date:
+                        if self.start_date <= comment_date < end_date_inclusive:
                             total_comments += 1
 
                 # 2. Fetch issue comments (general PR conversation)
@@ -179,7 +185,7 @@ class SprintSummary:
                     username = comment.get('user', {}).get('login')
                     if username and username.lower() == self.github_username.lower():
                         comment_date = datetime.strptime(comment['created_at'][:10], '%Y-%m-%d')
-                        if self.start_date <= comment_date <= self.end_date:
+                        if self.start_date <= comment_date < end_date_inclusive:
                             total_comments += 1
 
                 # 3. Fetch review summaries (approve/request changes with comments)
@@ -193,7 +199,7 @@ class SprintSummary:
                     if username and username.lower() == self.github_username.lower():
                         if review.get('body'):
                             review_date = datetime.strptime(review['submitted_at'][:10], '%Y-%m-%d')
-                            if self.start_date <= review_date <= self.end_date:
+                            if self.start_date <= review_date < end_date_inclusive:
                                 total_comments += 1
 
             except requests.exceptions.RequestException:
